@@ -1,37 +1,79 @@
-# Custom Bit-Packing File Compressor
+# Fixed Length Encoder
 
-A low-level, memory-efficient file compression and decompression tool written in pure Python. Built from scratch without external libraries to demonstrate bitwise operations, manual memory buffering, and custom algorithmic logic.
+A basic file compression and decompression tool written in pure Python without external libraries. I built this as a university pet project to practice bitwise operations, binary file I/O, and custom binary headers.
 
-## Key Features
+## Overview
 
-*   **Low-Level Bitwise Manipulation:** Bypasses Python's standard byte-level operations. Implements custom bit-shifting, masking (`&`, `|`), and a bit-buffer state machine to pack fractional bytes (e.g., 5-bit or 3-bit characters) directly to disk.
-*   **Memory-Efficient Chunking:** Capable of compressing massive files (GB/TB scale) on low-end machines. Both encoder and decoder read/write in strict 5MB/1MB chunks, ensuring RAM usage remains flat regardless of file size.
-*   **Zero Dependencies:** Strictly uses standard libraries. Even sorting is handled via a custom algorithm implementation (`bubble_sort`) instead of relying on Python's built-in `sorted()`.
-*   **Algorithmic File Seeking:** The decompressor calculates padding and stream positions using algebraic formulas and `f.seek()`, rather than looping through the file.
+Instead of using variable-length encoding (like Huffman coding), this project implements a simpler fixed-length bit packing algorithm. Standard files store each character as an 8-bit byte, even if the file only contains a small subset of unique characters. This script counts how many unique bytes actually appear in the file and encodes each character using the minimum required number of bits ($N$).
 
-## Tech Stack
-*   **Language:** Python 3
-*   **Techniques:** Bitwise Operations, Stream Processing, Context Managers, Algorithmic Big-O optimization.
+For example, if a text file contains only 30 unique characters, each character can be encoded using 5 bits ($2^5 = 32$) instead of 8 bits, reducing the payload size by about 37.5% (excluding the header).
 
-## How to use
+## How It Works
 
-**Compress a file:**
-Configure `in_file` in the script and run:
+**Compression (`compressor.py`):**
+
+* **Frequency Analysis:** The script reads the input file in 5 MB chunks and counts the occurrences of each byte value (0–255).
+
+
+* **Dictionary Creation:** All unique bytes present in the file are collected and sorted in ascending order using bubble sort.
+
+
+* **Bit Calculation:** The script calculates the minimum number of bits ($N$) needed to index all unique symbols.
+
+
+* **Binary Header:** The output file starts with a header containing 1 byte for the dictionary length, followed by the sorted unique bytes themselves.
+
+
+* **Bit Packing & Padding:** Immediately after the header, the first 3 bits are reserved to store the number of padding bits ($R$) added at the end of the file to align the stream to a full byte. The file content is then encoded by replacing each byte with its $N$-bit dictionary index.
+
+
+
+**Decompression (`decompressor.py`):**
+
+* **Header Parsing:** The decompressor reads the first byte to determine the dictionary size, loads the character lookup table, and recalculates the bit length ($N$).
+
+
+* **Stream Decoding:** It extracts the 3-bit padding count from the first data byte, reads the remaining bitstream in 5 MB chunks, and maps each $N$-bit index back to the original byte using a 1 MB output buffer.
+
+
+
+## Project Structure
+
+* `compressor.py` — reads the source file, builds the header, packs the bits, and prints a compression report (dictionary, unique symbol count, bits per symbol, padding bits, file sizes, and execution time).
+
+
+* `decompressor.py` — parses the compressed binary file, restores the original data, and prints a decompression summary.
+
+
+
+## Usage
+
+The project uses only Python standard library modules (`os` and `time`).
+
+1. **Compress a file:**
+By default, `compressor.py` looks for `input.txt` in the working directory and outputs `compressed.bin`.
+
+
 ```bash
-python compress.py
+python compressor.py
 
 ```
 
-*Outputs a compression report including dictionary size, bits per symbol (N), and processing time.*
 
-**Decompress a file:**
-Configure target files and run:
+2. **Decompress a file:**
+By default, `decompressor.py` reads `compressed.bin` and writes the output to `decompressed.txt`. Make sure the input filename in the `if __name__ == "__main__":` block matches your compressed file before running:
+
 
 ```bash
-python decompress.py
+python decompressor.py
 
 ```
 
-## Technical Highlights
 
-The algorithm calculates the strict minimum amount of bits needed for the unique characters in a file (Fixed-Length Encoding). For example, if a file only contains 4 unique ASCII characters, the engine will pack every character into exactly 2 bits, effectively reducing the file size by 75% without relying on variable-length prefix codes.
+
+## Limitations
+
+* Compression is effective only when the input file uses less than 128 unique byte values ($N \le 7$). If a file contains more than 128 unique byte values, $N$ becomes 8 bits, and the output file will be slightly larger than the original due to the header and 3-bit padding overhead.
+
+
+* If a binary file contains all 256 possible byte values, the dictionary length (`256`) will exceed the 1-byte header limit (`0–255`).
